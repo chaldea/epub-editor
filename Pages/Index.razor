@@ -1,0 +1,205 @@
+﻿@page "/"
+@using Chaldea.Epub.Service;
+@using Chaldea.Epub.Core;
+@inject JsInterop JsInterop;
+@inject ProjectService ProjectService;
+@inject NativeService NativeService;
+
+<Layout Class="main-layout">
+    <Header Class="main-header">
+        <div class="header-item">
+        </div>
+        <div class="header-item" style="text-align: center;">
+            <h2 style="color: #FFF;">@project.Name</h2>
+        </div>
+        <div class="header-item" style="text-align: right;">
+            <Space Style="height: 50px;">
+                <Button Type="link" Icon="caret-right" Class="btn-tool">预览</Button>
+                <Button Type="link" Icon="upload" Class="btn-tool">发布</Button>
+            </Space>
+        </div>
+    </Header>
+    <Layout Class="split">
+        <div class="main-sider" id="@_sider">
+            <Collapse>
+                <Panel ShowArrow="false" Header="项目库">
+                    <ExtraTemplate>
+                        <Space>
+                            <a @onclick:stopPropagation><Icon Type="file-add" Theme="outline"/></a>
+                        </Space>
+                    </ExtraTemplate>
+                    <ChildContent>
+                        <Tree BlockNode
+                              ShowIcon
+                              DataSource="project.Items"
+                              TitleExpression="x => x.DataItem.Name"
+                              ChildrenExpression="x => x.DataItem.Items"
+                              IsLeafExpression="x => x.DataItem.Items?.Count == 0"
+                              KeyExpression="x => x.DataItem.Id"
+                              TItem="ProjectItem">
+                        </Tree>
+                    </ChildContent>
+                </Panel>
+                <Panel ShowArrow="false" Header="资源库">
+                    <ExtraTemplate>
+                        <Space>
+                            <a @onclick:stopPropagation @onclick="HandleImportClick"><Icon Type="import" Theme="outline"/></a>
+                        </Space>
+                    </ExtraTemplate>
+                    <ChildContent>
+                        <Tree BlockNode
+                              ShowIcon
+                              DataSource="project.Resources"
+                              TitleExpression="x => x.DataItem.Name"
+                              ChildrenExpression="x => x.DataItem.Items"
+                              IconExpression="x => x.DataItem.Icon"
+                              IsLeafExpression="x => x.DataItem.Items?.Count == 0"
+                              KeyExpression="x => x.DataItem.Id"
+                              TItem="ResourceItem">
+                        </Tree>
+                    </ChildContent>
+                </Panel>
+            </Collapse>
+        </div>
+        <Content Id="@_content" Class="main-content">
+            <div class="editor">
+                <div class="editor-toolbar" @ref="toolbarRef"></div>
+                <div class="editor-content">
+                    <div @ref="editorRef" style="height: 100%; border: none; box-shadow: none;"></div>
+                </div>
+            </div>
+        </Content>
+    </Layout>
+</Layout>
+
+<style>
+    .main-layout {
+        height: 100vh;
+    }
+
+    .main-header {
+        background: #266cba;
+        height: 50px;
+        line-height: 50px;
+        padding: 0px 0px;
+        display: flex;
+        align-items: center;
+    }
+
+        .main-header .header-item {
+            width: 33%;
+            flex: auto;
+        }
+
+    .main-sider {
+        background: #FFFFFF;
+        width: calc(25% - 2.5px);
+    }
+
+        .main-sider .ant-collapse {
+            height: 100%;
+        }
+
+            .main-sider .ant-collapse .ant-collapse-header {
+                padding: 3px 12px;
+            }
+
+    .editor {
+        height: 100%;
+        width: 100%;
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+        .editor .editor-toolbar {
+            height: 41px;
+        }
+
+        .editor .editor-content {
+            height: calc(100% - 41px);
+        }
+
+    .btn-tool {
+        color: #DDD;
+    }
+
+    .ant-btn-link:focus, .ant-btn-link:hover {
+        color: #FFFFFF;
+    }
+
+    .ant-collapse-content > .ant-collapse-content-box {
+        padding: 0;
+    }
+
+    .ant-tree-treenode.ant-tree-treenode-selected {
+        background-color: #bae7ff;
+    }
+
+    .ant-tree-treenode:hover {
+        background-color: #f5f5f5;
+    }
+
+    .ant-tree .ant-tree-node-content-wrapper:hover {
+        background-color: transparent;
+    }
+
+    .ant-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
+        background-color: transparent;
+    }
+
+    .ck.ck-toolbar {
+        border: none;
+        border-radius: 0;
+    }
+    .split {
+        display: flex;
+        flex-direction: row;
+    }
+    .gutter {
+        background-color: #eee;
+        background-repeat: no-repeat;
+        background-position: 50%;
+    }
+
+    .gutter.gutter-horizontal {
+        background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAeCAYAAADkftS9AAAAIklEQVQoU2M4c+bMfxAGAgYYmwGrIIiDjrELjpo5aiZeMwF+yNnOs5KSvgAAAABJRU5ErkJggg==');
+        cursor: col-resize;
+    }
+</style>
+
+@code {
+    private ElementReference toolbarRef;
+    private ElementReference editorRef;
+    private string _sider = "split-1";
+    private string _content = "split-2";
+    private Project project = new Project();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        if (firstRender)
+        {
+            await JsInterop.CreateEditor(editorRef, toolbarRef);
+            await JsInterop.Split($"#{_sider}", $"#{_content}");
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        project = await ProjectService.CreateProject("这是测试项目");
+    }
+
+    private async Task HandleImportClick()
+    {
+        var files = await NativeService.ShowFileDialog();
+        project.Resources = files.Select(x => new ResourceItem
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Name = System.IO.Path.GetFileName(x),
+            Path = x,
+            Icon = "file",
+            Items = new List<ResourceItem>(),
+        }).ToList();
+    }
+}
